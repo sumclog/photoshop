@@ -9,7 +9,6 @@ import { decodeGB7, encodeGB7 } from './utils/gb7'
 import { imageDataToBlob, loadRasterFile, triggerDownload } from './utils/imageIO'
 import {
   DEFAULT_INTERPOLATION,
-  resizeImageData,
   type InterpolationMethod,
 } from './utils/interpolation'
 import { computeInitialViewScalePercent } from './utils/viewport'
@@ -193,28 +192,6 @@ function App() {
   }, [processedImageData, viewportSize])
 
   const viewScalePercent = userViewScale ?? autoViewScalePercent
-
-  const displayImageData = useMemo(() => {
-    if (!processedImageData) {
-      return null
-    }
-
-    const targetWidth = Math.max(
-      1,
-      Math.round((processedImageData.width * viewScalePercent) / 100),
-    )
-    const targetHeight = Math.max(
-      1,
-      Math.round((processedImageData.height * viewScalePercent) / 100),
-    )
-
-    return resizeImageData(
-      processedImageData,
-      targetWidth,
-      targetHeight,
-      viewInterpolation,
-    )
-  }, [processedImageData, viewScalePercent, viewInterpolation])
 
   const handleFile = async (file: File) => {
     const name = file.name.toLowerCase()
@@ -416,8 +393,10 @@ function App() {
       </div>
 
       <CanvasView
-        displayImageData={displayImageData}
+        imageData={processedImageData}
         pickImageData={baseImageData}
+        scalePercent={viewScalePercent}
+        interpolationMethod={viewInterpolation}
         onFileDrop={(file) => void handleFile(file)}
         onViewportReady={handleViewportReady}
         onCanvasPick={activeTool === 'eyedropper' ? handleEyedropperSample : undefined}

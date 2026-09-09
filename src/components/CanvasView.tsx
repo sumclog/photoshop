@@ -1,17 +1,22 @@
 import { useEffect, useRef } from 'react'
 import type { DragEventHandler, MouseEvent } from 'react'
+import type { InterpolationMethod } from '../utils/interpolation'
 
 type CanvasViewProps = {
-  displayImageData: ImageData | null
+  imageData: ImageData | null
   pickImageData: ImageData | null
+  scalePercent: number
+  interpolationMethod: InterpolationMethod
   onFileDrop: (file: File) => void
   onViewportReady: (width: number, height: number) => void
   onCanvasPick?: (x: number, y: number) => void
 }
 
 export function CanvasView({
-  displayImageData,
+  imageData,
   pickImageData,
+  scalePercent,
+  interpolationMethod,
   onFileDrop,
   onViewportReady,
   onCanvasPick,
@@ -30,17 +35,42 @@ export function CanvasView({
       return
     }
 
-    if (!displayImageData) {
+    if (!imageData) {
       canvas.width = 1
       canvas.height = 1
       ctx.clearRect(0, 0, 1, 1)
       return
     }
 
-    canvas.width = displayImageData.width
-    canvas.height = displayImageData.height
-    ctx.putImageData(displayImageData, 0, 0)
-  }, [displayImageData])
+    // GPU-масштабирование через drawImage вместо JS resizeImageData
+    const targetWidth = Math.max(
+      1,
+      Math.round((imageData.width * scalePercent) / 100),
+    )
+    const targetHeight = Math.max(
+      1,
+      Math.round((imageData.height * scalePercent) / 100),
+    )
+
+    canvas.width = targetWidth
+    canvas.height = targetHeight
+
+    // offscreen canvas с исходными пикселями
+    const offscreen = document.createElement('canvas')
+    offscreen.width = imageData.width
+    offscreen.height = imageData.height
+    const offCtx = offscreen.getContext('2d')
+    if (!offCtx) {
+      return
+    }
+    offCtx.putImageData(imageData, 0, 0)
+
+    ctx.imageSmoothingEnabled = interpolationMethod === 'bilinear'
+    ;(ctx as unknown as { imageSmoothingQuality: string }).imageSmoothingQuality =
+      interpolationMethod === 'bilinear' ? 'high' : 'low'
+    ctx.clearRect(0, 0, targetWidth, targetHeight)
+    ctx.drawImage(offscreen, 0, 0, targetWidth, targetHeight)
+  }, [imageData, scalePercent, interpolationMethod])
 
   useEffect(() => {
     const viewport = viewportRef.current
@@ -72,7 +102,7 @@ export function CanvasView({
   }
 
   const handleCanvasClick = (event: MouseEvent<HTMLCanvasElement>) => {
-    if (!displayImageData || !pickImageData || !onCanvasPick) {
+    if (!imageData || !pickImageData || !onCanvasPick) {
       return
     }
 
@@ -80,18 +110,19 @@ export function CanvasView({
     const localX = event.clientX - rect.left
     const localY = event.clientY - rect.top
 
+    // rect.width - отображаемый размер canvas
     const x = Math.max(
       0,
       Math.min(
         pickImageData.width - 1,
-        Math.floor((localX / displayImageData.width) * pickImageData.width),
+        Math.floor((localX / rect.width) * pickImageData.width),
       ),
     )
     const y = Math.max(
       0,
       Math.min(
         pickImageData.height - 1,
-        Math.floor((localY / displayImageData.height) * pickImageData.height),
+        Math.floor((localY / rect.height) * pickImageData.height),
       ),
     )
     onCanvasPick(x, y)
@@ -104,7 +135,7 @@ export function CanvasView({
       onDragOver={handleDragOver}
     >
       <div ref={viewportRef} className="canvas-scroll">
-        {displayImageData ? (
+        {imageData ? (
           <div className="canvas-frame">
             <canvas
               ref={canvasRef}

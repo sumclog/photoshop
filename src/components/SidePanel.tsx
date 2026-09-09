@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   INTERPOLATION_METHODS,
   type InterpolationMethod,
@@ -51,6 +51,36 @@ export function SidePanel({
   eyedropperSample,
 }: SidePanelProps) {
   const previewRef = useRef<HTMLCanvasElement | null>(null)
+  const [localScale, setLocalScale] = useState(() => Math.round(viewScalePercent))
+  const scaleRafRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLocalScale(Math.round(viewScalePercent))
+  }, [viewScalePercent])
+
+  const handleScaleChange = useCallback(
+    (value: number) => {
+      setLocalScale(value)
+      if (scaleRafRef.current !== null) {
+        cancelAnimationFrame(scaleRafRef.current)
+      }
+      scaleRafRef.current = requestAnimationFrame(() => {
+        scaleRafRef.current = null
+        onScaleChange(value)
+      })
+    },
+    [onScaleChange],
+  )
+
+  useEffect(
+    () => () => {
+      if (scaleRafRef.current !== null) {
+        cancelAnimationFrame(scaleRafRef.current)
+      }
+    },
+    [],
+  )
   const channelPreviewRefs = useRef<Record<ChannelId, HTMLCanvasElement | null>>({
     gray: null,
     red: null,
@@ -172,7 +202,7 @@ export function SidePanel({
     visibleChannels.forEach(drawChannelPreview)
   }, [hasAlpha, imageData, isGrayscale])
 
-  const zoomPercent = Math.round(viewScalePercent)
+  const zoomPercent = localScale
   const channelRows: Array<{ id: ChannelId; label: string }> = isGrayscale
     ? hasAlpha
       ? [
@@ -214,7 +244,7 @@ export function SidePanel({
                 min={VIEW_SCALE_MIN}
                 max={VIEW_SCALE_MAX}
                 value={zoomPercent}
-                onChange={(event) => onScaleChange(Number(event.target.value))}
+                onChange={(event) => handleScaleChange(Number(event.target.value))}
               />
               <label className="zoom-control" htmlFor="interpolation-method">
                 Интерполяция

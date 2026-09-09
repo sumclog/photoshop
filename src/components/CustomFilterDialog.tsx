@@ -52,6 +52,7 @@ export function CustomFilterDialog({
   const snapshotRef = useRef<ImageData>(cloneImageData(imageData))
   const previewAbortRef = useRef<AbortController | null>(null)
   const applyAbortRef = useRef<AbortController | null>(null)
+  const previewDebounceRef = useRef<number | null>(null)
 
   const [presetId, setPresetId] = useState<KernelPresetId>('identity')
   const [kernel, setKernel] = useState<number[]>([...DEFAULT_KERNEL])
@@ -111,17 +112,40 @@ export function CustomFilterDialog({
 
   useEffect(() => {
     if (!previewEnabled) {
+      if (previewDebounceRef.current !== null) {
+        window.clearTimeout(previewDebounceRef.current)
+        previewDebounceRef.current = null
+      }
       cancelPreview()
       onPreviewChange(null)
       return
     }
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setError(null)
-    void runPreview(kernel, padding, channels)
+
+    // Дебаунс 300мс
+    if (previewDebounceRef.current !== null) {
+      window.clearTimeout(previewDebounceRef.current)
+    }
+    previewDebounceRef.current = window.setTimeout(() => {
+      previewDebounceRef.current = null
+      void runPreview(kernel, padding, channels)
+    }, 300)
+
+    return () => {
+      if (previewDebounceRef.current !== null) {
+        window.clearTimeout(previewDebounceRef.current)
+        previewDebounceRef.current = null
+      }
+    }
   }, [kernel, padding, channels, previewEnabled, runPreview, cancelPreview, onPreviewChange])
 
   useEffect(
     () => () => {
+      if (previewDebounceRef.current !== null) {
+        window.clearTimeout(previewDebounceRef.current)
+      }
       cancelPreview()
       applyAbortRef.current?.abort()
       onPreviewChange(null)

@@ -206,6 +206,7 @@ export function LevelsDialog({
   const [histMode, setHistMode] = useState<HistogramMode>('linear')
   const [previewEnabled, setPreviewEnabled] = useState(true)
   const previewRafRef = useRef<number | null>(null)
+  const previewTimeoutRef = useRef<number | null>(null)
 
   const visibleChannels = CHANNELS.filter(
     (ch) => ch.id !== 'alpha' || hasAlpha,
@@ -234,16 +235,24 @@ export function LevelsDialog({
     (nextSettings: LevelsSettings) => {
       if (!snapshotRef.current || !previewEnabled) return
 
+      // Дебаунс + RAF: при драге ползунка не блокируем UI синхронным applyLevels
+      if (previewTimeoutRef.current !== null) {
+        window.clearTimeout(previewTimeoutRef.current)
+      }
       if (previewRafRef.current !== null) {
         cancelAnimationFrame(previewRafRef.current)
+        previewRafRef.current = null
       }
 
-      previewRafRef.current = requestAnimationFrame(() => {
-        previewRafRef.current = null
-        if (snapshotRef.current) {
-          onPreviewChange(applyLevels(snapshotRef.current, nextSettings))
-        }
-      })
+      previewTimeoutRef.current = window.setTimeout(() => {
+        previewTimeoutRef.current = null
+        previewRafRef.current = requestAnimationFrame(() => {
+          previewRafRef.current = null
+          if (snapshotRef.current) {
+            onPreviewChange(applyLevels(snapshotRef.current, nextSettings))
+          }
+        })
+      }, 30)
     },
     [onPreviewChange, previewEnabled],
   )
@@ -257,11 +266,31 @@ export function LevelsDialog({
 
   useEffect(() => {
     if (!previewEnabled) {
+      if (previewTimeoutRef.current !== null) {
+        window.clearTimeout(previewTimeoutRef.current)
+        previewTimeoutRef.current = null
+      }
+      if (previewRafRef.current !== null) {
+        cancelAnimationFrame(previewRafRef.current)
+        previewRafRef.current = null
+      }
       onPreviewChange(null)
       return
     }
     schedulePreview(settings)
   }, [previewEnabled, settings, schedulePreview, onPreviewChange])
+
+  useEffect(
+    () => () => {
+      if (previewTimeoutRef.current !== null) {
+        window.clearTimeout(previewTimeoutRef.current)
+      }
+      if (previewRafRef.current !== null) {
+        cancelAnimationFrame(previewRafRef.current)
+      }
+    },
+    [],
+  )
 
   useEffect(() => {
     const canvas = histCanvasRef.current
