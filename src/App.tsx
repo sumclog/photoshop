@@ -77,6 +77,7 @@ function rgbToLab(r: number, g: number, b: number) {
 function App() {
   const [imageData, setImageData] = useState<ImageData | null>(null)
   const [sourceFormat, setSourceFormat] = useState<SourceFormat | null>(null)
+  const [gb7HasMask, setGb7HasMask] = useState<boolean | null>(null)
   const [saveFormat, setSaveFormat] = useState<SaveFormat>('png')
   const [useMask, setUseMask] = useState(true)
   const [baseName, setBaseName] = useState('image')
@@ -203,11 +204,13 @@ function App() {
         const decoded = decodeGB7(buffer)
         setImageData(decoded.imageData)
         setSourceFormat('gb7')
+        setGb7HasMask(decoded.hasMask)
         setSaveFormat('gb7')
       } else {
         const loaded = await loadRasterFile(file)
         setImageData(loaded.imageData)
         setSourceFormat(loaded.format)
+        setGb7HasMask(null)
         setSaveFormat(loaded.format)
       }
 
@@ -420,6 +423,7 @@ function App() {
         height={imageHeight}
         sourceFormat={sourceFormat}
         hasAlpha={imageCharacteristics.hasAlpha}
+        gb7HasMask={gb7HasMask}
         viewScalePercent={viewScalePercent}
       />
     </div>
