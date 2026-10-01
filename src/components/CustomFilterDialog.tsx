@@ -15,6 +15,7 @@ import './CustomFilterDialog.css'
 type CustomFilterDialogProps = {
   imageData: ImageData
   hasAlpha: boolean
+  isGrayscale: boolean
   onPreviewChange: (preview: ImageData | null) => void
   onApply: (result: ImageData) => void
   onClose: () => void
@@ -45,6 +46,7 @@ function parseKernelInput(raw: string): number {
 export function CustomFilterDialog({
   imageData,
   hasAlpha,
+  isGrayscale,
   onPreviewChange,
   onApply,
   onClose,
@@ -58,6 +60,8 @@ export function CustomFilterDialog({
   const [kernel, setKernel] = useState<number[]>([...DEFAULT_KERNEL])
   const [padding, setPadding] = useState<EdgePadding>(DEFAULT_PADDING)
   const [channels, setChannels] = useState<FilterChannelMask>(DEFAULT_CHANNELS)
+  // Серый формат: один Gray-чекбокс управляет R+G+B вместе, чтобы не разорвать серость
+  const [grayEnabled, setGrayEnabled] = useState(true)
   const [previewEnabled, setPreviewEnabled] = useState(true)
   const [processing, setProcessing] = useState(false)
   const [progress, setProgress] = useState<number | null>(null)
@@ -128,9 +132,20 @@ export function CustomFilterDialog({
     if (previewDebounceRef.current !== null) {
       window.clearTimeout(previewDebounceRef.current)
     }
+    // Серый формат: Gray-чекбокс маппим на R+G+B, свёртка идёт одинаково по трём
+    // каналам и серость R=G=B не рвётся
+    const effectiveChannels: FilterChannelMask = isGrayscale
+      ? {
+          red: grayEnabled,
+          green: grayEnabled,
+          blue: grayEnabled,
+          alpha: channels.alpha,
+        }
+      : channels
+
     previewDebounceRef.current = window.setTimeout(() => {
       previewDebounceRef.current = null
-      void runPreview(kernel, padding, channels)
+      void runPreview(kernel, padding, effectiveChannels)
     }, 300)
 
     return () => {
@@ -139,7 +154,7 @@ export function CustomFilterDialog({
         previewDebounceRef.current = null
       }
     }
-  }, [kernel, padding, channels, previewEnabled, runPreview, cancelPreview, onPreviewChange])
+  }, [kernel, padding, channels, grayEnabled, isGrayscale, previewEnabled, runPreview, cancelPreview, onPreviewChange])
 
   useEffect(
     () => () => {
@@ -179,6 +194,7 @@ export function CustomFilterDialog({
     handlePresetChange('identity')
     setPadding(DEFAULT_PADDING)
     setChannels({ ...DEFAULT_CHANNELS })
+    setGrayEnabled(true)
     setError(null)
   }
 
@@ -194,8 +210,9 @@ export function CustomFilterDialog({
       return
     }
 
-    const hasSelectedChannel =
-      channels.red || channels.green || channels.blue || channels.alpha
+    const hasSelectedChannel = isGrayscale
+      ? grayEnabled || channels.alpha
+      : channels.red || channels.green || channels.blue || channels.alpha
     if (!hasSelectedChannel) {
       setError('Выберите хотя бы один канал.')
       return
@@ -211,11 +228,19 @@ export function CustomFilterDialog({
     setError(null)
 
     try {
+      const effectiveChannels: FilterChannelMask = isGrayscale
+        ? {
+            red: grayEnabled,
+            green: grayEnabled,
+            blue: grayEnabled,
+            alpha: channels.alpha,
+          }
+        : channels
       const result = await applyKernelConvolution(
         snapshotRef.current,
         kernel,
         padding,
-        channels,
+        effectiveChannels,
         {
           signal: controller.signal,
           onProgress: (value) => setProgress(value),
@@ -328,33 +353,50 @@ export function CustomFilterDialog({
         <div className="custom-filter-row">
           <p className="custom-filter-section-title">Каналы</p>
           <div className="custom-filter-checks">
-            <label>
-              <input
-                type="checkbox"
-                checked={channels.red}
-                disabled={processing}
-                onChange={() => toggleChannel('red')}
-              />
-              R
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={channels.green}
-                disabled={processing}
-                onChange={() => toggleChannel('green')}
-              />
-              G
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={channels.blue}
-                disabled={processing}
-                onChange={() => toggleChannel('blue')}
-              />
-              B
-            </label>
+            {isGrayscale ? (
+              <label>
+                <input
+                  type="checkbox"
+                  checked={grayEnabled}
+                  disabled={processing}
+                  onChange={() => {
+                    setGrayEnabled((prev) => !prev)
+                    setError(null)
+                  }}
+                />
+                Gray
+              </label>
+            ) : (
+              <>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={channels.red}
+                    disabled={processing}
+                    onChange={() => toggleChannel('red')}
+                  />
+                  R
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={channels.green}
+                    disabled={processing}
+                    onChange={() => toggleChannel('green')}
+                  />
+                  G
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={channels.blue}
+                    disabled={processing}
+                    onChange={() => toggleChannel('blue')}
+                  />
+                  B
+                </label>
+              </>
+            )}
             {hasAlpha && (
               <label>
                 <input

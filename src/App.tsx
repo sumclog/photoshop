@@ -332,6 +332,7 @@ function App() {
         <CustomFilterDialog
           imageData={imageData}
           hasAlpha={imageCharacteristics.hasAlpha}
+          isGrayscale={imageCharacteristics.isGrayscale}
           onPreviewChange={setFilterPreview}
           onApply={(result) => {
             setImageData(result)
@@ -350,6 +351,7 @@ function App() {
         <LevelsDialog
           imageData={imageData}
           hasAlpha={imageCharacteristics.hasAlpha}
+          isGrayscale={imageCharacteristics.isGrayscale}
           onPreviewChange={setLevelsPreview}
           onApply={(result) => {
             setImageData(result)

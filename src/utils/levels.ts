@@ -1,4 +1,10 @@
-export type LevelsChannel = 'master' | 'red' | 'green' | 'blue' | 'alpha'
+export type LevelsChannel =
+  | 'master'
+  | 'gray'
+  | 'red'
+  | 'green'
+  | 'blue'
+  | 'alpha'
 
 export type ChannelLevels = {
   inBlack: number
@@ -16,10 +22,22 @@ export const DEFAULT_CHANNEL_LEVELS: ChannelLevels = {
 
 export const DEFAULT_LEVELS_SETTINGS: LevelsSettings = {
   master: { ...DEFAULT_CHANNEL_LEVELS },
+  gray: { ...DEFAULT_CHANNEL_LEVELS },
   red: { ...DEFAULT_CHANNEL_LEVELS },
   green: { ...DEFAULT_CHANNEL_LEVELS },
   blue: { ...DEFAULT_CHANNEL_LEVELS },
   alpha: { ...DEFAULT_CHANNEL_LEVELS },
+}
+
+export function resetLevelsSettings(): LevelsSettings {
+  return {
+    master: { ...DEFAULT_CHANNEL_LEVELS },
+    gray: { ...DEFAULT_CHANNEL_LEVELS },
+    red: { ...DEFAULT_CHANNEL_LEVELS },
+    green: { ...DEFAULT_CHANNEL_LEVELS },
+    blue: { ...DEFAULT_CHANNEL_LEVELS },
+    alpha: { ...DEFAULT_CHANNEL_LEVELS },
+  }
 }
 
 export type HistogramMode = 'linear' | 'log'
@@ -68,7 +86,13 @@ export function computeHistogram(
   }
 
   const channelIndex =
-    channel === 'red' ? 0 : channel === 'green' ? 1 : channel === 'blue' ? 2 : 3
+    channel === 'red' || channel === 'gray'
+      ? 0
+      : channel === 'green'
+        ? 1
+        : channel === 'blue'
+          ? 2
+          : 3
 
   for (let i = channelIndex; i < data.length; i += 4) {
     bins[data[i]]++
@@ -102,10 +126,28 @@ export function buildLevelsLut(levels: ChannelLevels): Uint8Array {
 export function applyLevels(
   source: ImageData,
   settings: LevelsSettings,
+  isGrayscale = false,
 ): ImageData {
   const output = new ImageData(source.width, source.height)
   const src = source.data
   const dst = output.data
+
+  // Серый формат: один канал Gray (+Alpha), R=G=B обрабатываем одной LUT,
+  // чтобы не разорвать серость и не плодить цвет
+  if (isGrayscale) {
+    const lutGray = buildLevelsLut(settings.gray)
+    const lutA = buildLevelsLut(settings.alpha)
+
+    for (let i = 0; i < src.length; i += 4) {
+      const v = lutGray[src[i]]
+      dst[i] = v
+      dst[i + 1] = v
+      dst[i + 2] = v
+      dst[i + 3] = lutA[src[i + 3]]
+    }
+
+    return output
+  }
 
   const lutR = buildLevelsLut(settings.red)
   const lutG = buildLevelsLut(settings.green)

@@ -11,9 +11,9 @@ import {
   clampChannelLevels,
   cloneImageData,
   computeHistogram,
-  DEFAULT_CHANNEL_LEVELS,
   DEFAULT_LEVELS_SETTINGS,
   gammaToSliderPosition,
+  resetLevelsSettings,
   sliderPositionToGamma,
   type ChannelLevels,
   type HistogramMode,
@@ -25,6 +25,7 @@ import './LevelsDialog.css'
 type LevelsDialogProps = {
   imageData: ImageData
   hasAlpha: boolean
+  isGrayscale: boolean
   onPreviewChange: (preview: ImageData | null) => void
   onApply: (result: ImageData) => void
   onClose: () => void
@@ -34,6 +35,7 @@ type DragTarget = 'black' | 'gamma' | 'white' | null
 
 const CHANNELS: { id: LevelsChannel; label: string; color?: string }[] = [
   { id: 'master', label: 'RGB' },
+  { id: 'gray', label: 'Gray' },
   { id: 'red', label: 'R', color: '#e85c5c' },
   { id: 'green', label: 'G', color: '#5ce87a' },
   { id: 'blue', label: 'B', color: '#5c8ae8' },
@@ -193,6 +195,7 @@ function LevelsSlider({
 export function LevelsDialog({
   imageData,
   hasAlpha,
+  isGrayscale,
   onPreviewChange,
   onApply,
   onClose,
@@ -202,15 +205,36 @@ export function LevelsDialog({
   const snapshotRef = useRef<ImageData>(cloneImageData(imageData))
 
   const [settings, setSettings] = useState<LevelsSettings>(DEFAULT_LEVELS_SETTINGS)
-  const [activeChannel, setActiveChannel] = useState<LevelsChannel>('master')
+  const [activeChannel, setActiveChannel] = useState<LevelsChannel>(() =>
+    isGrayscale ? 'gray' : 'master',
+  )
   const [histMode, setHistMode] = useState<HistogramMode>('linear')
   const [previewEnabled, setPreviewEnabled] = useState(true)
   const previewRafRef = useRef<number | null>(null)
   const previewTimeoutRef = useRef<number | null>(null)
 
-  const visibleChannels = CHANNELS.filter(
-    (ch) => ch.id !== 'alpha' || hasAlpha,
-  )
+  // Каналы по формату: серый — Gray (+Alpha), цветной — Master/R/G/B (+Alpha)
+  const visibleChannels = CHANNELS.filter((ch) => {
+    if (ch.id === 'alpha') return hasAlpha
+    if (isGrayscale) return ch.id === 'gray'
+    return ch.id !== 'gray'
+  })
+
+  useEffect(() => {
+    if (isGrayscale) {
+      if (
+        activeChannel === 'master' ||
+        activeChannel === 'red' ||
+        activeChannel === 'green' ||
+        activeChannel === 'blue'
+      ) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- страховка: канал обязан соответствовать формату
+        setActiveChannel('gray')
+      }
+    } else if (activeChannel === 'gray') {
+      setActiveChannel('master')
+    }
+  }, [isGrayscale, activeChannel])
 
   const currentLevels = settings[activeChannel]
 
@@ -249,12 +273,14 @@ export function LevelsDialog({
         previewRafRef.current = requestAnimationFrame(() => {
           previewRafRef.current = null
           if (snapshotRef.current) {
-            onPreviewChange(applyLevels(snapshotRef.current, nextSettings))
+            onPreviewChange(
+              applyLevels(snapshotRef.current, nextSettings, isGrayscale),
+            )
           }
         })
       }, 30)
     },
-    [onPreviewChange, previewEnabled],
+    [onPreviewChange, previewEnabled, isGrayscale],
   )
 
   useEffect(() => {
@@ -303,10 +329,8 @@ export function LevelsDialog({
   }
 
   const handleReset = () => {
-    setSettings((prev) => ({
-      ...prev,
-      [activeChannel]: { ...DEFAULT_CHANNEL_LEVELS },
-    }))
+    // По критерию сброс возвращает ВСЕ уровни к исходным, а не только активный
+    setSettings(resetLevelsSettings())
   }
 
   const handleCancel = () => {
@@ -316,7 +340,7 @@ export function LevelsDialog({
 
   const handleApply = () => {
     if (snapshotRef.current) {
-      onApply(applyLevels(snapshotRef.current, settings))
+      onApply(applyLevels(snapshotRef.current, settings, isGrayscale))
     }
     onPreviewChange(null)
     onClose()
